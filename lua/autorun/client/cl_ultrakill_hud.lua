@@ -8,7 +8,7 @@ local hs = CreateClientConVar("ultrakill_hud_sound", 1, true, false, "1 = enable
 local color_charge = Color(56, 223, 247)
 local color_charge2 = Color(247, 60, 56)
 local color_gun = Color(64, 223, 255)
--- local color_gun = Color(255, 0, 0)
+local color_damage = Color(220, 100, 0)
 surface.CreateFont('UltrakillHUD', { font = 'VCR OSD Mono', size = 24, weight = 7000, antialias = true, })  -- for health/shields
 surface.CreateFont('UltrakillHUD2', { font = 'VCR OSD Mono', size = 100, weight = 0, antialias = true, })   -- for large text (1 digit no ammo reserve)
 surface.CreateFont('UltrakillHUD3', { font = 'VCR OSD Mono', size = 48, weight = 0, antialias = true, })    -- for big text (2 digit no ammo reserve)
@@ -21,23 +21,33 @@ local stamina
 local lastST = 0
 local lastSR = 0
 local lastHP = 0
+local lastHPTime = 0
 local lastAP = 0
+local lastAPTime = 0
 local animateHP = true
 local animateAP = true
+local diffHP = 0
+local diffAP = 0
 local ap_animated = 0
 local hp_animated = 0
 local hud_on = false
+local hpcol = Color(255, 0, 0)
+local apcol = Color(0, 100, 255)
 
 if GetConVar("ultrakill_hud_text") then RunConsoleCommand("ultrakill_hud_text", 0) end
 if GetConVar("feedbacker_chatnotif") then RunConsoleCommand("feedbacker_chatnotif", 0) end
 if GetConVar("ultrakill_max_stamina") then stamina = GetConVar("ultrakill_max_stamina"):GetInt() end
 
 hook.Add("HUDPaintBackground", "", function()
-	if !LocalPlayer():Alive() or !he:GetBool() then -- this causes the health bar to fill up on respawn
+	if !LocalPlayer():Alive() or LocalPlayer():Health() == 0 or !he:GetBool() then -- this causes the health bar to fill up on respawn
 		lastST = 0
 		lastSR = 0
-		lastHP = 0
+		lastHP = 0 -- makes it start red
+		lastHPTime = 0
 		lastAP = 0
+		lastAPTime = 0
+		diffAP = 0
+		diffHP = 0
 		animateHP = true
 		animateAP = true
 		ap_animated = 0
@@ -67,14 +77,16 @@ hook.Add("HUDPaintBackground", "", function()
 			-- local pos = LocalPlayer():GetShootPos() + (forward * 7) + (up * (-2.5 + hy:GetFloat()/100)) + (right*(-1.9 + hx:GetFloat()/100))
 		-- get health values, animate health if necessary
 			local hp = LocalPlayer():Health()
-			local hpcol = Color(255, 0, 0)
 			local hpmod = (math.Clamp(hp / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
 
 			-- if the player's health changes
 			if lastHP ~= hp then
-				local diff = hp - lastHP
-				if diff ~= 0 and diff ~= hp then -- check difference in health to see if health gain/loss
+				diffHP = hp - lastHP
+				if diffHP ~= 0 and hp ~= 0 and lastHP ~= 0  then -- check difference in health to see if gain/loss, hp~=0 and lastHP~=0 make sure it fills up as red on start
 					animateHP = true
+					if diffHP > 0 then hpcol = Color(0,255,0)
+					else hpcol = color_damage end
+					lastHPTime = CurTime()
 					hp_animated = lastHP
 				end
 				lastHP = hp
@@ -86,14 +98,16 @@ hook.Add("HUDPaintBackground", "", function()
 			end
 		-- get shield values, animate shields if necessary
 			local ap = LocalPlayer():Armor()
-			local apcol = Color(0, 100, 255)
 			local apmod = (math.Clamp(ap / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
 
 			-- if the player's shield changes
 			if lastAP ~= ap then
-				local diff = ap - lastAP
-				if diff ~= 0 and diff ~= ap then -- check difference in health to see if shield gain/loss
+				diffAP = ap - lastAP
+				if diffAP ~= 0 then -- check difference in health to see if gain/loss, missing addutional conditions that hp checks to make sure it animates when gaining AP for the first time
 					animateAP = true
+					if diffAP > 0 then apcol = Color(0,255,255)
+					else apcol = color_damage end
+					lastAPTime = CurTime()
 					ap_animated = lastAP
 				end
 				lastAP = ap
@@ -150,7 +164,7 @@ hook.Add("HUDPaintBackground", "", function()
 								Lerp(CurTime() - lastSR, 255, 247)
 							))
 						else
-							draw.RoundedBox(6, x, 73, 252/s, 20, color_charge)
+							draw.RoundedBox(6, x, 73, 252/s, 20, Color(255,0,0))
 						end
 						x = -93 + 252 / s * i
 					end
@@ -180,12 +194,43 @@ hook.Add("HUDPaintBackground", "", function()
 				end
 
 				if hp > 0 then
-
-					local am = ap > 0
+					local am = ap < 0
+					if diffHP > 0 then
+						hpcol = Color(
+							Lerp((CurTime() - lastHPTime)/50,hpcol.r,255),
+							Lerp((CurTime() - lastHPTime)/50,hpcol.g,0),
+							Lerp((CurTime() - lastHPTime)/50,hpcol.b,0)
+						)
+					end
 					draw.RoundedBoxEx(5, -93, 45, hpmod, 25, hpcol, true, !am, true, !am)
+					if math.abs(hp_animated - hp) < 0.01 and diffHP < 0 then -- after some time the player took damage, reset hpcol to red
+						hpcol = Color(255,0,0)
+					elseif diffHP < 0 then
+						local hpmod_damage_temp = (math.Clamp(hp / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
+						if ap > 0 then
+							hpmod_damage_temp = (hpmod_damage_temp / 2)*.94
+						end
+						draw.RoundedBoxEx(5, -93, 45, hpmod_damage_temp, 25, Color(255,0,0), true, !am, true, !am)
+					end
 					draw.SimpleText(hp, "UltrakillHUD", -77, 45.7 + (22.5 / 2), color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 					if ap > 0 then
+						if diffAP > 0 then
+							apcol = Color(
+								Lerp((CurTime() - lastAPTime)/50,apcol.r,0),
+								Lerp((CurTime() - lastAPTime)/50,apcol.g,100),
+								Lerp((CurTime() - lastAPTime)/50,apcol.b,255)
+							)
+						end
 						draw.RoundedBoxEx(5, -18.5 + 41, 44, apmod, 25.5, apcol, false, true, false, true)
+						if math.abs(ap_animated - ap) < 0.01 and diffAP < 0 then -- after some time the player took damage, reset hpcol to red
+							apcol = Color(0,100,255)
+						elseif diffAP < 0 then
+							local apmod_damage_temp = (math.Clamp(ap / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
+							if ap > 0 then
+								apmod_damage_temp = (apmod_damage_temp / 2)*1.077
+							end
+							draw.RoundedBoxEx(5, -18.5 + 41, 44, apmod_damage_temp, 25.5, Color(0,100,255), false, true, false, true)
+						end
 						draw.SimpleText(ap, "UltrakillHUD", -15+59, 45.7 + (22.5 / 2), color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 					end
 				end
@@ -198,16 +243,16 @@ hook.Add("HUDPaintBackground", "", function()
 						local ammo1Str = ((clip1 > -1 and '\n/\n' or '')) .. ammo1
 
 						-- calculate max column length
-							local maxLen = 0
-							local lines = {}
-							-- split the multiline ammo1Str into its lines
-							for line in ammo1Str:gmatch("[^\r\n]+") do table.insert(lines, line) end
-							-- iterate over each line to find the longest column length
-							for _, line in ipairs(lines) do
-								local length = string.len(line)
-								if length > maxLen then maxLen = length end
-							end
-							local maxcol = maxLen
+						local maxLen = 0
+						local lines = {}
+						-- split the multiline ammo1Str into its lines
+						for line in ammo1Str:gmatch("[^\r\n]+") do table.insert(lines, line) end
+						-- iterate over each line to find the longest column length
+						for _, line in ipairs(lines) do
+							local length = string.len(line)
+							if length > maxLen then maxLen = length end
+						end
+						local maxcol = maxLen
 
 						-- calculate mag color
 						local color_mag = Color(color_charge2.r + (clip1/maxclip1)*(color_charge.r-color_charge2.r), color_charge2.g + (clip1/maxclip1)*(color_charge.g-color_charge2.g), color_charge2.b + (clip1/maxclip1)*(color_charge.b-color_charge2.b))
