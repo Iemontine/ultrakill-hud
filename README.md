@@ -8,7 +8,7 @@ A recreation of the ULTRAKILL HUD in Garry's Mod
 ![Health Loss Animations](https://github.com/Iemontine/ultrakill-hud/assets/95956143/f3b57c70-cdd2-42ae-9e64-b940f6db321c)
 ## [ULTRAKILL ARMS](https://steamcommunity.com/sharedfiles/filedetails/?id=2967208438) integration
 ![ULTRAKILL ARMS integration](https://github.com/Iemontine/ultrakill-hud/assets/95956143/de990033-45af-4931-b6a3-724b37247e76)
-## [ULTRAKILL Dash & Ground Slam](https://steamcommunity.com/sharedfiles/filedetails/?id=2835397953) Integration
+## [ULTRAKILL Dash & Ground Slam](https://steamcommunity.com/sharedfiles/filedetails/?id=2835397953) (Stamina Bar) Integration
 ![Dashing](https://github.com/Iemontine/ultrakill-hud/assets/95956143/1c42f5f6-448a-4601-9f9a-6f0444277868)
 
 ### Console Variables
@@ -19,3 +19,10 @@ A recreation of the ULTRAKILL HUD in Garry's Mod
 | ultrakill_hud_xoffset | 0 | x offset of HUD |
 | ultrakill_hud_yoffset | 0 | y offset of HUD |
 | ultrakill_hud_sound | 1 (enabled) | whether the HUD should play sounds or not |
+
+### Potential TODOs
+* More customizability
+* Intertia effect
+* Style/combo meter from ULTRAKILL
+* Opton to turn off ammo view and replace it with a lightning bolt ammo bar
+* Options to hide the fist and lightning bolt elements
