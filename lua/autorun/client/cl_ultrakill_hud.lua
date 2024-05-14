@@ -4,12 +4,14 @@ local he = CreateClientConVar("ultrakill_hud_enable", 1, true, false, "1 = enabl
 local hx = CreateClientConVar("ultrakill_hud_xoffset", 0, true, false, "-1000 - 1000", -1000, 1000)
 local hy = CreateClientConVar("ultrakill_hud_yoffset", 0, true, false, "-1000 - 1000", -1000, 1000)
 local hs = CreateClientConVar("ultrakill_hud_sound", 1, true, false, "1 = enabled, 0 = disabled", 0, 1)
+local hesm = CreateClientConVar("ultrakill_hud_enable_style_meter", 1, true, false, "1 = enabled, 0 = disabled", 0, 1)
 -- constants and fonts
 local color_charge = Color(56, 223, 247)
 local color_charge2 = Color(247, 60, 56)
 local color_gun = Color(64, 223, 255)
-local color_damage = Color(220, 100, 0)
-surface.CreateFont('UltrakillHUD', { font = 'VCR OSD Mono', size = 24, weight = 7000, antialias = true, })  -- for health/shields
+local color_damage = Color(255, 163, 0)
+local color_hard_damage = Color(63,63,63)
+surface.CreateFont('UltrakillHUD', { font = 'VCR OSD Mono', size = 24, weight = 5000, antialias = true, })  -- for health/shields
 surface.CreateFont('UltrakillHUD2', { font = 'VCR OSD Mono', size = 100, weight = 0, antialias = true, })   -- for large text (1 digit no ammo reserve)
 surface.CreateFont('UltrakillHUD3', { font = 'VCR OSD Mono', size = 48, weight = 0, antialias = true, })    -- for big text (2 digit no ammo reserve)
 surface.CreateFont('UltrakillHUD4', { font = 'VCR OSD Mono', size = 24, weight = 0, antialias = true, })    -- for max column == 4 
@@ -77,15 +79,15 @@ hook.Add("HUDPaintBackground", "", function()
 			-- local pos = LocalPlayer():GetShootPos() + (forward * 7) + (up * (-2.5 + hy:GetFloat()/100)) + (right*(-1.9 + hx:GetFloat()/100))
 		-- get health values, animate health if necessary
 			local hp = LocalPlayer():Health()
-			local hpmod = (math.Clamp(hp / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
+			local hpmod
 
 			-- if the player's health changes
 			if lastHP ~= hp then
 				diffHP = hp - lastHP
-				if diffHP ~= 0 and hp ~= 0 and lastHP ~= 0  then -- check difference in health to see if gain/loss, hp~=0 and lastHP~=0 make sure it fills up as red on start
+				if diffHP ~= 0 and hp ~= 0 and lastHP ~= 0 then -- check difference in health to see if gain/loss, hp~=0 and lastHP~=0 make sure it fills up as red on start
 					animateHP = true
 					if diffHP > 0 then hpcol = Color(0,255,0)
-					else hpcol = color_damage end
+					elseif diffHP < 0 then hpcol = color_damage end
 					lastHPTime = CurTime()
 					hp_animated = lastHP
 				end
@@ -98,7 +100,7 @@ hook.Add("HUDPaintBackground", "", function()
 			end
 		-- get shield values, animate shields if necessary
 			local ap = LocalPlayer():Armor()
-			local apmod = (math.Clamp(ap / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
+			local apmod
 
 			-- if the player's shield changes
 			if lastAP ~= ap then
@@ -164,7 +166,7 @@ hook.Add("HUDPaintBackground", "", function()
 								Lerp(CurTime() - lastSR, 255, 247)
 							))
 						else
-							draw.RoundedBox(6, x, 73, 252/s, 20, Color(255,0,0))
+							draw.RoundedBox(6, x, 73, 252/s, 20, color_charge)
 						end
 						x = -93 + 252 / s * i
 					end
@@ -172,7 +174,7 @@ hook.Add("HUDPaintBackground", "", function()
 					if lastST != 0 and stamina < s then
 						local c = Color(0, 0, 0)
 						if stamina == 0 then
-							c = color_charge2
+							c = Color(255,0,0)
 						else
 							c = Color(56, 223, 247, 60)
 						end
@@ -183,6 +185,19 @@ hook.Add("HUDPaintBackground", "", function()
 					draw.RoundedBox(6, -9, 73, 84, 20, color_charge)
 					draw.RoundedBox(6, 75, 73, 84, 20, color_charge)
 				end
+			-- draw hard damage
+				local aphpRounded = false
+				if LocalPlayer():GetNW2Int( "UltrakillBase_HardDamage" ) ~= 0 then
+					local hard_damage = LocalPlayer():GetNW2Int( "UltrakillBase_HardDamage" )
+					local hdmod = (math.Clamp(hard_damage / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
+					aphpRounded = ((100 - hard_damage) - hp  < 0.01)
+					if ap > 0 then
+						hdmod = (hdmod / 2)*.91
+						draw.RoundedBoxEx(5, 159 - hdmod - 136, 45, hdmod, 25, color_hard_damage, !aphpRounded, false, !aphpRounded, false)
+					else
+						draw.RoundedBoxEx(5, 159 - hdmod, 45, hdmod, 25, color_hard_damage, !aphpRounded, true, !aphpRounded, true)
+					end
+				end	
 			-- health and shields
 				if animateHP then
 					hp_animated = Lerp(1 - math.exp(-7 * FrameTime()), hp_animated, hp)
@@ -197,12 +212,12 @@ hook.Add("HUDPaintBackground", "", function()
 					local am = ap < 0
 					if diffHP > 0 then
 						hpcol = Color(
-							Lerp((CurTime() - lastHPTime)/50,hpcol.r,255),
-							Lerp((CurTime() - lastHPTime)/50,hpcol.g,0),
-							Lerp((CurTime() - lastHPTime)/50,hpcol.b,0)
+							Lerp((CurTime() - lastHPTime)/20,hpcol.r,255),
+							Lerp((CurTime() - lastHPTime)/20,hpcol.g,0),
+							Lerp((CurTime() - lastHPTime)/20,hpcol.b,0)
 						)
 					end
-					draw.RoundedBoxEx(5, -93, 45, hpmod, 25, hpcol, true, !am, true, !am)
+					draw.RoundedBoxEx(5, -93, 45, hpmod, 25, hpcol, true, (!am and !aphpRounded), true, (!am and !aphpRounded))
 					if math.abs(hp_animated - hp) < 0.01 and diffHP < 0 then -- after some time the player took damage, reset hpcol to red
 						hpcol = Color(255,0,0)
 					elseif diffHP < 0 then
@@ -216,12 +231,12 @@ hook.Add("HUDPaintBackground", "", function()
 					if ap > 0 then
 						if diffAP > 0 then
 							apcol = Color(
-								Lerp((CurTime() - lastAPTime)/50,apcol.r,0),
-								Lerp((CurTime() - lastAPTime)/50,apcol.g,100),
-								Lerp((CurTime() - lastAPTime)/50,apcol.b,255)
+								Lerp((CurTime() - lastAPTime)/20,apcol.r,0),
+								Lerp((CurTime() - lastAPTime)/20,apcol.g,100),
+								Lerp((CurTime() - lastAPTime)/20,apcol.b,255)
 							)
 						end
-						draw.RoundedBoxEx(5, -18.5 + 41, 44, apmod, 25.5, apcol, false, true, false, true)
+						draw.RoundedBoxEx(5, -18.5 + 41, 45, apmod, 25, apcol, false, true, false, true)
 						if math.abs(ap_animated - ap) < 0.01 and diffAP < 0 then -- after some time the player took damage, reset hpcol to red
 							apcol = Color(0,100,255)
 						elseif diffAP < 0 then
@@ -229,7 +244,7 @@ hook.Add("HUDPaintBackground", "", function()
 							if ap > 0 then
 								apmod_damage_temp = (apmod_damage_temp / 2)*1.077
 							end
-							draw.RoundedBoxEx(5, -18.5 + 41, 44, apmod_damage_temp, 25.5, Color(0,100,255), false, true, false, true)
+							draw.RoundedBoxEx(5, -18.5 + 41, 45, apmod_damage_temp, 25, Color(0,100,255), false, true, false, true)
 						end
 						draw.SimpleText(ap, "UltrakillHUD", -15+59, 45.7 + (22.5 / 2), color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 					end
@@ -358,9 +373,28 @@ hook.Add("HUDPaintBackground", "", function()
 						surface.DisableClipping(false)
 					end
 				end
+			
 		cam.End3D2D()
 	cam.End3D()
-	DisableClipping(false)
+	if hesm:GetBool() then -- if style meter is enabled
+		cam.Start3D(nil, nil, 70, 0, 0, ScrW(), ScrH()) 
+		local up, right, forward = EyeAngles():Up(), EyeAngles():Right(), EyeAngles():Forward()
+		local ang = EyeAngles()
+		ang:RotateAroundAxis(up, 180)
+		ang:RotateAroundAxis(right, 38 )
+		ang:RotateAroundAxis(forward, -90)
+		
+		local pos = EyePos() + (forward * 7) + (up * (5 + hy:GetFloat()/100)) + (right*(2 + hx:GetFloat()/100))
+			cam.Start3D2D(pos, ang, 0.016) -- starting drawing style meter
+				-- draw.RoundedBox(3, -10, -10, 1000, 1000, Color(0, 0, 0, opacity))-- gun box
+				draw.RoundedBox(0, 47, 144+58, 92, 40, Color(0, 0, 0, opacity))-- gun box
+				draw.RoundedBox(0, 47, 186+58, 92, 7, Color(0, 0, 0, 255))-- gun box
+				draw.RoundedBox(0, 47, 195+58, 92, 85, Color(0, 0, 0, opacity))-- gun box
+				
+			cam.End3D2D()
+		cam.End3D()
+		DisableClipping(false)
+	end
 end)
 
 net.Receive("ULTRAKILL_UpdateStaminaCount", function() -- taken directly from ultrakill dash
