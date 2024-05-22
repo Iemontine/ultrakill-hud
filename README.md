@@ -21,8 +21,11 @@ A recreation of the ULTRAKILL HUD in Garry's Mod
 | ultrakill_hud_sound | 1 (enabled) | whether the HUD should play sounds or not |
 
 ### Potential TODOs
-* More customizability
-* Intertia effect
-* Style/combo meter from ULTRAKILL
+#### Easy
+* More customizability - change UI colors in Addon settings
 * Opton to turn off ammo view and replace it with a lightning bolt ammo bar
 * Options to hide the fist and lightning bolt elements
+#### Hard
+* Option to combine shields and health into one bar representing overhealth
+* Intertia effect
+* Style/combo meter from ULTRAKILL
