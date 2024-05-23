@@ -1,5 +1,5 @@
 # ultrakill-hud
-A recreation of the ULTRAKILL HUD in Garry's Mod
+A recreation of the ULTRAKILL HUD in Garry's Mod. Feel free to contribute!
 ## Autoicons + Ammo Display
 ![Autoicons + Ammo Display](https://github.com/Iemontine/ultrakill-hud/assets/95956143/1483ff18-cee7-4bf0-946c-bec0a36bb815)
 ## Health + Armor Bar Animations
