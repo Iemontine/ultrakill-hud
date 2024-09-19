@@ -27,5 +27,5 @@ A recreation of the ULTRAKILL HUD in Garry's Mod. Feel free to contribute!
 * Options to hide the fist and lightning bolt elements
 #### Hard
 * Option to combine shields and health into one bar representing overhealth
-* Intertia effect
+* Inertia effect
 * Style/combo meter from ULTRAKILL
