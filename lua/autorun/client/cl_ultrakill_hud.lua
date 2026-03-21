@@ -5,12 +5,49 @@ local hx = CreateClientConVar("ultrakill_hud_xoffset", 0, true, false, "-1000 - 
 local hy = CreateClientConVar("ultrakill_hud_yoffset", 0, true, false, "-1000 - 1000", -1000, 1000)
 local hs = CreateClientConVar("ultrakill_hud_sound", 1, true, false, "1 = enabled, 0 = disabled", 0, 1)
 local hesm = CreateClientConVar("ultrakill_hud_enable_style_meter", 1, true, false, "1 = enabled, 0 = disabled", 0, 1)
+
+local default_colors = {
+	charge = {56, 223, 247},
+	gun = {64, 223, 255},
+	damage = {255, 163, 0},
+	hard = {63, 63, 63},
+	secondary = {255, 0, 0},
+	apbase = {0, 100, 255},
+}
+
+local colors_file = "ultrakill_hud_colors.json"
+local color_prefs = table.Copy(default_colors)
+
+local function LoadColorPrefs()
+	local raw = file.Read(colors_file, "DATA")
+	if not raw then return end
+	local decoded = util.JSONToTable(raw)
+	if not istable(decoded) then return end
+	for key, rgb in pairs(default_colors) do
+		local src = decoded[key]
+		if istable(src) and src[1] and src[2] and src[3] then
+			color_prefs[key] = {
+				math.Clamp(tonumber(src[1]) or rgb[1], 0, 255),
+				math.Clamp(tonumber(src[2]) or rgb[2], 0, 255),
+				math.Clamp(tonumber(src[3]) or rgb[3], 0, 255),
+			}
+		end
+	end
+end
+
+local function SaveColorPrefs()
+	file.Write(colors_file, util.TableToJSON(color_prefs, true))
+end
+
+LoadColorPrefs()
+
+local function HudColor(key)
+	if key == "gun" then key = "charge" end
+	if key == "hpbase" then key = "secondary" end
+	local rgb = color_prefs[key] or default_colors.charge
+	return Color(rgb[1], rgb[2], rgb[3])
+end
 -- constants and fonts
-local color_charge = Color(56, 223, 247)
-local color_charge2 = Color(247, 60, 56)
-local color_gun = Color(64, 223, 255)
-local color_damage = Color(255, 163, 0)
-local color_hard_damage = Color(63,63,63)
 surface.CreateFont('UltrakillHUD', { font = 'VCR OSD Mono', size = 24, weight = 5000, antialias = true, })  -- for health/shields
 surface.CreateFont('UltrakillHUD2', { font = 'VCR OSD Mono', size = 100, weight = 0, antialias = true, })   -- for large text (1 digit no ammo reserve)
 surface.CreateFont('UltrakillHUD3', { font = 'VCR OSD Mono', size = 48, weight = 0, antialias = true, })    -- for big text (2 digit no ammo reserve)
@@ -33,8 +70,8 @@ local diffAP = 0
 local ap_animated = 0
 local hp_animated = 0
 local hud_on = false
-local hpcol = Color(255, 0, 0)
-local apcol = Color(0, 100, 255)
+local hpcol = HudColor("secondary")
+local apcol = HudColor("apbase")
 
 if GetConVar("ultrakill_hud_text") then RunConsoleCommand("ultrakill_hud_text", 0) end
 if GetConVar("feedbacker_chatnotif") then RunConsoleCommand("feedbacker_chatnotif", 0) end
@@ -67,6 +104,24 @@ hook.Add("HUDPaintBackground", "", function()
 	-- cam.Start3D2D(ply:GetShootPos() - val + ply:GetAimVector() * 10 + ply:GetAimVector():Angle():Right() * (-9 + HUDY / 100) + ply:GetAimVector():Angle():Up() * (-5.25 + HUDX / 100) + ply:GetAimVector():Angle():Up() * 2.5 * GetConVar("ultrakill_gamemode_HudScale"):GetInt() / 2,(ply:GetAimVector():Angle():Right() + ply:GetAimVector() / 2 ):Angle() + Angle(0,0,-ply:GetAimVector():Angle()[1] + 90),0.0025 * GetConVar("ultrakill_gamemode_HudScale"):GetInt() / 2)
 	cam.Start3D(nil, nil, 65, 0, 0, ScrW()/2, ScrH()) -- hud fov = 77, may want to investigate manipulating this as well as below EyeAngles() and EyePos() to create inertia effect
 		local opacity = 255*(ho:GetInt()/100)
+		local color_charge = HudColor("charge")
+		local color_gun = HudColor("gun")
+		local color_damage = HudColor("damage")
+		local color_hard_damage = HudColor("hard")
+		local hp_base = HudColor("secondary")
+		local ap_base = HudColor("apbase")
+		local max_stamina = LocalPlayer():GetNW2Int("UltrakillBase_MaxStamina", GetConVar("ultrakill_max_stamina"):GetInt())
+		local render_stamina = true
+		local uk_enabled_cvar = GetConVar("ultrakill_enabled")
+		if uk_enabled_cvar ~= nil and uk_enabled_cvar:IsValid() then
+			render_stamina = uk_enabled_cvar:GetBool()
+		end
+		if stamina ~= nil then
+			-- If we have live stamina data from net, prefer rendering it even if the convar is off/missing
+			render_stamina = true
+		end
+		hpcol = hp_base -- reset to base each frame so flashes don't stick
+		apcol = ap_base
 
 		-- desperately fight to make the angle of the HUD identical to ultrakill's
 			local up, right, forward = EyeAngles():Up(), EyeAngles():Right(), EyeAngles():Forward()
@@ -86,43 +141,35 @@ hook.Add("HUDPaintBackground", "", function()
 				diffHP = hp - lastHP
 				if diffHP ~= 0 and hp ~= 0 and lastHP ~= 0 then -- check difference in health to see if gain/loss, hp~=0 and lastHP~=0 make sure it fills up as red on start
 					animateHP = true
-					if diffHP > 0 then hpcol = Color(0,255,0)
-					elseif diffHP < 0 then hpcol = color_damage end
 					lastHPTime = CurTime()
 					hp_animated = lastHP
 				end
 				lastHP = hp
 			end
-			if animateHP then
-				hpmod = (math.Clamp(hp_animated / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
-			else
-				hpmod = (math.Clamp(hp / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
-			end
-		-- get shield values, animate shields if necessary
-			local ap = LocalPlayer():Armor()
-			local apmod
+			hpmod = (math.Clamp(hp / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
+			local hp_overlay = (math.Clamp(hp_animated / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
+			-- get shield values, animate shields if necessary
+				local ap = LocalPlayer():Armor()
+				local apmod
 
 			-- if the player's shield changes
 			if lastAP ~= ap then
 				diffAP = ap - lastAP
 				if diffAP ~= 0 then -- check difference in health to see if gain/loss, missing addutional conditions that hp checks to make sure it animates when gaining AP for the first time
 					animateAP = true
-					if diffAP > 0 then apcol = Color(0,255,255)
-					else apcol = color_damage end
 					lastAPTime = CurTime()
 					ap_animated = lastAP
 				end
 				lastAP = ap
 			end
-			if animateAP then
-				apmod = (math.Clamp(ap_animated / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
-			else
-				apmod = (math.Clamp(ap / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
-			end
+			apmod = (math.Clamp(ap / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
+			local ap_overlay = (math.Clamp(ap_animated / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
 		-- if player has shields, split healthbar in half
 			if ap > 0 then
 				apmod = (apmod / 2)*1.077
+				ap_overlay = (ap_overlay / 2)*1.077
 				hpmod = (hpmod / 2)*.94
+				hp_overlay = (hp_overlay / 2)*.94
 			end
 		-- get relevant ammo info
 			local weapon = LocalPlayer():GetActiveWeapon()
@@ -142,9 +189,9 @@ hook.Add("HUDPaintBackground", "", function()
 				draw.RoundedBox(5, -100, 39, 266, 58, Color(0, 0, 0, opacity))  -- health, stamina box
 				draw.RoundedBox(5, -93, 45, 252, 25, Color(0, 0, 0, opacity))  -- health bar
 			-- stamina
-				if GetConVar("ultrakill_enabled") and GetConVar("ultrakill_enabled"):GetBool() then
+				if render_stamina then
 					local x = -93
-					local s = GetConVar("ultrakill_max_stamina"):GetInt()
+					local s = math.max(max_stamina, stamina or 0)
 					for i = 1, s do
 						draw.RoundedBox(6, x, 73, 252/s, 20, Color(0, 0, 0, opacity))
 						x = -93 + 252 / s * i
@@ -155,15 +202,22 @@ hook.Add("HUDPaintBackground", "", function()
 					draw.RoundedBox(6, 75, 73, 84, 20, Color(0, 0, 0, opacity))
 				end
 				-- draw stamina icons
-				if GetConVar("ultrakill_enabled") and GetConVar("ultrakill_enabled"):GetBool() then
+				if render_stamina then
 					local x = -93
-					local s = GetConVar("ultrakill_max_stamina"):GetInt()
+					local s = math.max(max_stamina, stamina or 0)
+					-- fade highlight duration for freshly regained pip
+					local highlight_window = 0.35
+					if lastSR > 0 and CurTime() - lastSR > highlight_window then
+						lastSR = 0
+					end
+
 					for i = 1, math.Clamp(stamina, 0, s) do
-						if i == stamina then
+						if i == stamina and lastSR > 0 then
+							local t = math.Clamp((CurTime() - lastSR) / highlight_window, 0, 1)
 							draw.RoundedBox(6, x, 73, 252/s, 20, Color(
-								Lerp(CurTime() - lastSR, 255, 56),
-								Lerp(CurTime() - lastSR, 255, 223),
-								Lerp(CurTime() - lastSR, 255, 247)
+								Lerp(t, 255, color_charge.r),
+								Lerp(t, 255, color_charge.g),
+								Lerp(t, 255, color_charge.b)
 							))
 						else
 							draw.RoundedBox(6, x, 73, 252/s, 20, color_charge)
@@ -172,13 +226,10 @@ hook.Add("HUDPaintBackground", "", function()
 					end
 
 					if lastST != 0 and stamina < s then
-						local c = Color(0, 0, 0)
-						if stamina == 0 then
-							c = Color(255,0,0)
-						else
-							c = Color(56, 223, 247, 60)
-						end
-						draw.RoundedBox(6, x, 73, Lerp((CurTime() - lastST) / GetConVar("ultrakill_regen_time"):GetFloat(), 0, 252/s), 20, c)
+						local regenAlpha = stamina == 0 and 255 or 80
+						local c = Color(color_charge.r, color_charge.g, color_charge.b, regenAlpha)
+						local t = math.Clamp((CurTime() - lastST) / GetConVar("ultrakill_regen_time"):GetFloat(), 0, 1)
+						draw.RoundedBox(6, x, 73, Lerp(t, 0, 252/s), 20, c)
 					end
 				else
 					draw.RoundedBox(6, -93, 73, 84, 20, color_charge)
@@ -187,15 +238,17 @@ hook.Add("HUDPaintBackground", "", function()
 				end
 			-- draw hard damage
 				local aphpRounded = false
-				if LocalPlayer():GetNW2Int( "UltrakillBase_HardDamage" ) ~= 0 then
+				if GetConVar("ultrakill_enabled") and GetConVar("ultrakill_enabled"):GetBool() then
 					local hard_damage = LocalPlayer():GetNW2Int( "UltrakillBase_HardDamage" )
-					local hdmod = (math.Clamp(hard_damage / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
-					aphpRounded = ((100 - hard_damage) - hp  < 0.01)
-					if ap > 0 then
-						hdmod = (hdmod / 2)*.91
-						draw.RoundedBoxEx(5, 159 - hdmod - 136, 45, hdmod, 25, color_hard_damage, !aphpRounded, false, !aphpRounded, false)
-					else
-						draw.RoundedBoxEx(5, 159 - hdmod, 45, hdmod, 25, color_hard_damage, !aphpRounded, true, !aphpRounded, true)
+					if hard_damage ~= 0 then
+						local hdmod = (math.Clamp(hard_damage / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
+						aphpRounded = ((100 - hard_damage) - hp  < 0.01)
+						if ap > 0 then
+							hdmod = (hdmod / 2)*.91
+							draw.RoundedBoxEx(5, 159 - hdmod - 136, 45, hdmod, 25, color_hard_damage, !aphpRounded, false, !aphpRounded, false)
+						else
+							draw.RoundedBoxEx(5, 159 - hdmod, 45, hdmod, 25, color_hard_damage, !aphpRounded, true, !aphpRounded, true)
+						end
 					end
 				end	
 			-- health and shields
@@ -211,41 +264,39 @@ hook.Add("HUDPaintBackground", "", function()
 				if hp > 0 then
 					local am = ap < 0
 					if diffHP > 0 then
+						local healCol = Color(0, 255, 0)
+						local healBlend = 1 - math.Clamp((CurTime() - lastHPTime) / 0.5, 0, 1)
 						hpcol = Color(
-							Lerp((CurTime() - lastHPTime)/20,hpcol.r,255),
-							Lerp((CurTime() - lastHPTime)/20,hpcol.g,0),
-							Lerp((CurTime() - lastHPTime)/20,hpcol.b,0)
+							Lerp(healBlend, hp_base.r, healCol.r),
+							Lerp(healBlend, hp_base.g, healCol.g),
+							Lerp(healBlend, hp_base.b, healCol.b)
 						)
+					else
+						hpcol = hp_base
+					end
+					-- draw lingering damage (old value) behind the live bar
+					if hp_overlay > hpmod then
+						draw.RoundedBoxEx(5, -93, 45, hp_overlay, 25, color_damage, true, (!am and !aphpRounded), true, (!am and !aphpRounded))
 					end
 					draw.RoundedBoxEx(5, -93, 45, hpmod, 25, hpcol, true, (!am and !aphpRounded), true, (!am and !aphpRounded))
-					if math.abs(hp_animated - hp) < 0.01 and diffHP < 0 then -- after some time the player took damage, reset hpcol to red
-						hpcol = Color(255,0,0)
-					elseif diffHP < 0 then
-						local hpmod_damage_temp = (math.Clamp(hp / LocalPlayer():GetMaxHealth(), 0, 1) * 252)
-						if ap > 0 then
-							hpmod_damage_temp = (hpmod_damage_temp / 2)*.94
-						end
-						draw.RoundedBoxEx(5, -93, 45, hpmod_damage_temp, 25, Color(255,0,0), true, !am, true, !am)
-					end
 					draw.SimpleText(hp, "UltrakillHUD", -77, 45.7 + (22.5 / 2), color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 					if ap > 0 then
 						if diffAP > 0 then
+							local healCol = Color(0, 200, 255)
+							local healBlend = 1 - math.Clamp((CurTime() - lastAPTime) / 0.5, 0, 1)
 							apcol = Color(
-								Lerp((CurTime() - lastAPTime)/20,apcol.r,0),
-								Lerp((CurTime() - lastAPTime)/20,apcol.g,100),
-								Lerp((CurTime() - lastAPTime)/20,apcol.b,255)
+								Lerp(healBlend, ap_base.r, healCol.r),
+								Lerp(healBlend, ap_base.g, healCol.g),
+								Lerp(healBlend, ap_base.b, healCol.b)
 							)
+						else
+							apcol = ap_base
+						end
+						-- lingering shield damage behind live bar
+						if ap_overlay > apmod then
+							draw.RoundedBoxEx(5, -18.5 + 41, 45, ap_overlay, 25, color_damage, false, true, false, true)
 						end
 						draw.RoundedBoxEx(5, -18.5 + 41, 45, apmod, 25, apcol, false, true, false, true)
-						if math.abs(ap_animated - ap) < 0.01 and diffAP < 0 then -- after some time the player took damage, reset hpcol to red
-							apcol = Color(0,100,255)
-						elseif diffAP < 0 then
-							local apmod_damage_temp = (math.Clamp(ap / LocalPlayer():GetMaxArmor(), 0, 1) * 252)
-							if ap > 0 then
-								apmod_damage_temp = (apmod_damage_temp / 2)*1.077
-							end
-							draw.RoundedBoxEx(5, -18.5 + 41, 45, apmod_damage_temp, 25, Color(0,100,255), false, true, false, true)
-						end
 						draw.SimpleText(ap, "UltrakillHUD", -15+59, 45.7 + (22.5 / 2), color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 					end
 				end
@@ -269,19 +320,19 @@ hook.Add("HUDPaintBackground", "", function()
 						end
 						local maxcol = maxLen
 
-						-- calculate mag color
-						local color_mag = Color(color_charge2.r + (clip1/maxclip1)*(color_charge.r-color_charge2.r), color_charge2.g + (clip1/maxclip1)*(color_charge.g-color_charge2.g), color_charge2.b + (clip1/maxclip1)*(color_charge.b-color_charge2.b))
+						-- calculate mag color blending from health (warning) to primary
+						local color_mag = Color(hp_base.r + (clip1/maxclip1)*(color_charge.r-hp_base.r), hp_base.g + (clip1/maxclip1)*(color_charge.g-hp_base.g), hp_base.b + (clip1/maxclip1)*(color_charge.b-hp_base.b))
 
 						-- ugly ass hardcoding the font sizes
 						if string.len(ammo1Str) == 1 then
 							if ammo1 < 3 then
-								draw.DrawText(ammo1Str, "UltrakillHUD2", 199, -80, color_charge2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+								draw.DrawText(ammo1Str, "UltrakillHUD2", 199, -80, hp_base, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							else
 								draw.DrawText(ammo1Str, "UltrakillHUD2", 199, -80, color_charge, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							end
 						elseif string.len(ammo1Str) == 2 then
 							if ammo1 < 3 then
-								draw.DrawText(ammo1Str, "UltrakillHUD3", 199, -53, color_charge2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+								draw.DrawText(ammo1Str, "UltrakillHUD3", 199, -53, hp_base, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							else
 								draw.DrawText(ammo1Str, "UltrakillHUD3", 199, -53, color_charge, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							end
@@ -300,15 +351,15 @@ hook.Add("HUDPaintBackground", "", function()
 							if maxcol <= 3 then
 								draw.DrawText(clip1, "UltrakillHUD5", 199.5, -91.5, color_mag, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 								draw.DrawText(ammo1Str, "UltrakillHUD5", 199.5, -91.5, color_charge, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-								draw.DrawText(tostring(ammo2), "UltrakillHUD5", 199, 2.5, color_charge2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+								draw.DrawText(tostring(ammo2), "UltrakillHUD5", 199, 2.5, hp_base, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							else
 								draw.DrawText(clip1, "UltrakillHUD4", 199, -90, color_mag, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 								draw.DrawText(ammo1Str, "UltrakillHUD4", 199, -90, color_charge, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-								draw.DrawText(tostring(ammo2), "UltrakillHUD4", 199, 5, color_charge2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+								draw.DrawText(tostring(ammo2), "UltrakillHUD4", 199, 5, hp_base, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							end
 						else -- weapon does not use ammo
 							if ammo1 <= 3 then
-								draw.DrawText(ammo1Str, "UltrakillHUD4", 199, -45, color_charge2, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+								draw.DrawText(ammo1Str, "UltrakillHUD4", 199, -45, hp_base, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							else
 								draw.DrawText(ammo1Str, "UltrakillHUD4", 199, -45, color_charge, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 							end
@@ -316,27 +367,29 @@ hook.Add("HUDPaintBackground", "", function()
 					else -- if weapon does not use ammo
 						draw.RoundedBox(5, 169, -95, 60, 131, Color(0, 0, 0, opacity))
 						surface.DisableClipping(true)
-						surface.SetDrawColor(255, 255, 255)
+						surface.SetDrawColor(color_charge)
 						surface.SetMaterial(Material("materials/lightning.png"))
 						surface.DrawTexturedRect(175,-89, 50, 118)
 						surface.DisableClipping(false)
 					end
 				end
-			-- feedbacker/knuckleblaster
+			-- feedbacker/knuckleblaster fist (tinted to primary/secondary)
 				draw.RoundedBox(5, 169, 39, 60, 58, Color(0, 0, 0, opacity))
-				local HUDImage
-				if GetConVar("feedbacker_arm") ~= nil then
-					if GetConVar("feedbacker_arm"):GetString() == 'KNUCKLEBLASTER' then
-						HUDImage = Material("materials/knuckleblaster.png")
-					else
-						HUDImage = Material("materials/feedbacker.png")
-					end
-				else
-					HUDImage = Material("materials/feedbacker.png")          
+				local fistColor = HudColor("charge")
+				if GetConVar("feedbacker_arm") ~= nil and GetConVar("feedbacker_arm"):GetString() == "KNUCKLEBLASTER" then
+					fistColor = HudColor("secondary")
 				end
+				-- boost brightness so the grayscale fist pops against the background
+				local boost = 1.35
+				fistColor = Color(
+					math.min(255, math.floor(fistColor.r * boost)),
+					math.min(255, math.floor(fistColor.g * boost)),
+					math.min(255, math.floor(fistColor.b * boost)),
+					255
+				)
 				surface.DisableClipping(true)
-				surface.SetDrawColor(255, 255, 255)
-				surface.SetMaterial(HUDImage)
+				surface.SetDrawColor(fistColor)
+				surface.SetMaterial(Material("materials/fist.png"))
 				surface.DrawTexturedRect(175, 44.5, 48, 48)
 				surface.DisableClipping(false)
 			-- weapon icon
@@ -376,46 +429,31 @@ hook.Add("HUDPaintBackground", "", function()
 			
 		cam.End3D2D()
 	cam.End3D()
-	if hesm:GetBool() then -- if style meter is enabled
-		cam.Start3D(nil, nil, 70, 0, 0, ScrW(), ScrH()) 
-		local up, right, forward = EyeAngles():Up(), EyeAngles():Right(), EyeAngles():Forward()
-		local ang = EyeAngles()
-		ang:RotateAroundAxis(up, 180)
-		ang:RotateAroundAxis(right, 38 )
-		ang:RotateAroundAxis(forward, -90)
-		
-		local pos = EyePos() + (forward * 7) + (up * (5 + hy:GetFloat()/100)) + (right*(2 + hx:GetFloat()/100))
-			cam.Start3D2D(pos, ang, 0.016) -- starting drawing style meter
-				-- draw.RoundedBox(3, -10, -10, 1000, 1000, Color(0, 0, 0, opacity))-- gun box
-				draw.RoundedBox(0, 47, 144+58, 92, 40, Color(0, 0, 0, opacity))-- gun box
-				draw.RoundedBox(0, 47, 186+58, 92, 7, Color(0, 0, 0, 255))-- gun box
-				draw.RoundedBox(0, 47, 195+58, 92, 85, Color(0, 0, 0, opacity))-- gun box
-				
-			cam.End3D2D()
-		cam.End3D()
-		DisableClipping(false)
-	end
 end)
 
 net.Receive("ULTRAKILL_UpdateStaminaCount", function() -- taken directly from ultrakill dash
 	local ply = LocalPlayer()
 	local oldstamina = stamina
-	stamina = net.ReadUInt(31)
+	stamina = net.ReadUInt(4) -- messages are only 4 bits long based on observed payloads
 	local spawned = net.ReadBool()
+	local max_stamina = LocalPlayer():GetNW2Int("UltrakillBase_MaxStamina", GetConVar("ultrakill_max_stamina"):GetInt())
 
-	if stamina < GetConVar("ultrakill_max_stamina"):GetInt() and lastST == 0 then lastST = CurTime() end
+	if stamina < max_stamina and lastST == 0 then lastST = CurTime() end
 
 	if !spawned then
 		if stamina > oldstamina then
 			lastST, lastSR = CurTime(), CurTime()
-			if stamina == GetConVar("ultrakill_max_stamina"):GetInt() then
+			if stamina == max_stamina then
 				if hs:GetBool() then ply:EmitSound("ultrakill/batterycharged.wav", 0, 170) end
 				lastST = 0
-			elseif hs:GetBool() and stamina == GetConVar("ultrakill_max_stamina"):GetInt() - 1 then
+			elseif hs:GetBool() and stamina == max_stamina - 1 then
 				ply:EmitSound("ultrakill/batterycharged.wav", 0, 160)
 			elseif hs:GetBool() then
 				ply:EmitSound("ultrakill/batterycharged.wav", 0, 150)
 			end
+		elseif stamina < oldstamina then
+			lastST = CurTime()
+			lastSR = 0
 		elseif hs:GetBool() and stamina == oldstamina then
 			ply:EmitSound("ultrakill/batteryexpired.wav", 0, 50)
 		else
@@ -434,7 +472,45 @@ hook.Add("PopulateToolMenu", "UltrakillHUD", function()
 		panel:ControlHelp("Opacity of the background HUD boxes as a % (0-100)")
 		panel:NumSlider("X Offset", "ultrakill_hud_xoffset", -1000, 1000, 2)
 		panel:NumSlider("Y Offset", "ultrakill_hud_yoffset", -1000, 1000, 2)
-		panel:Help("Customization options coming soon! 6/14/2023")
+		panel:Help("Colors (saved to data/" .. colors_file .. ")")
+
+		local mixers = {}
+		local function addColorMixer(label, key)
+			local mixer = vgui.Create("DColorMixer", panel)
+			mixer:SetLabel(label)
+			mixer:SetPalette(false)
+			mixer:SetAlphaBar(false)
+			mixer:SetWangs(true)
+			local rgb = color_prefs[key] or default_colors[key]
+			mixer:SetColor(Color(rgb[1], rgb[2], rgb[3]))
+			mixer.ValueChanged = function(_, col)
+				color_prefs[key] = {col.r, col.g, col.b}
+				SaveColorPrefs()
+			end
+			panel:AddItem(mixer)
+			mixers[key] = mixer
+		end
+
+		addColorMixer("Primary (stamina/charge + gun icon)", "charge")
+		addColorMixer("Secondary (health / warning)", "secondary")
+		addColorMixer("Damage flash", "damage")
+		addColorMixer("Hard damage bar", "hard")
+		addColorMixer("Armor base", "apbase")
+		addColorMixer("Gun icon", "gun")
+
+		local resetBtn = vgui.Create("DButton", panel)
+		resetBtn:SetText("Reset HUD colors to defaults")
+		resetBtn:Dock(TOP)
+		resetBtn:DockMargin(0, 6, 0, 6)
+		resetBtn.DoClick = function()
+			for key, rgb in pairs(default_colors) do
+				color_prefs[key] = {rgb[1], rgb[2], rgb[3]}
+				if mixers[key] then mixers[key]:SetColor(Color(rgb[1], rgb[2], rgb[3])) end
+			end
+			SaveColorPrefs()
+		end
+		panel:AddItem(resetBtn)
+
 		panel:Help("(Made by lemontine & spalumn)")
 	end)
 end)

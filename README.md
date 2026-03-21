@@ -22,8 +22,7 @@ A recreation of the ULTRAKILL HUD in Garry's Mod. Feel free to contribute!
 
 ### Potential TODOs
 #### Easy
-* More customizability - change UI colors in Addon settings
-* Opton to turn off ammo view and replace it with a lightning bolt ammo bar
+* Option to turn off ammo view and replace it with a lightning bolt ammo bar
 * Options to hide the fist and lightning bolt elements
 #### Hard
 * Option to combine shields and health into one bar representing overhealth

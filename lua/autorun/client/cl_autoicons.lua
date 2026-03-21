@@ -29,8 +29,8 @@ AUTOICON_DESATURATEMATERIAL = CreateMaterial(UniqueName(), "g_colourmodify", {
     ["$pp_colour_addr"] = 0,
     ["$pp_colour_addg"] = 0,
     ["$pp_colour_addb"] = 0,
-    ["$pp_colour_brightness"] = -0.25,
-    ["$pp_colour_contrast"] = 3,
+    ["$pp_colour_brightness"] = -0.35,
+    ["$pp_colour_contrast"] = 4.5,
     ["$pp_colour_colour"] = 0,
     ["$pp_colour_mulr"] = 0,
     ["$pp_colour_mulg"] = 0,
@@ -466,7 +466,7 @@ function GetAutoIcon(p, mode)
                 h = ScrH(),
                 type = "3D",
                 origin = mainent:LocalToWorld(center) + Vector(0, -viewdist, 0),
-                angles = Vector(0, 90, 0),
+                angles = Angle(0, 90, 0),
                 aspect = 1,
                 fov = fov,
                 -- znear = znear, -- zfar = zfar, -- ortho = {left=unclampedlerp(cx-hw,-rad,rad),bottom=unclampedlerp(cy-hh,rad,-rad),right=unclampedlerp(cx+hw,-rad,rad),top=unclampedlerp(cy+hh,rad,-rad)},
@@ -653,7 +653,7 @@ function GetAutoIcon(p, mode)
         StartOrthoCam()
         drawmodel()
         cam.End3D()
-        render.BlurRenderTarget(colorrt, 1 / rtx, 1 / rty, 1) --make it less noisy
+        render.BlurRenderTarget(colorrt, 0.25 / rtx, 0.25 / rty, 1) --lighter blur to keep edges sharper
         render.PopRenderTarget()
         -- Render the model normals
         local normalrt = MakeRT(ReusableName, rtx, rty, true)
@@ -671,7 +671,7 @@ function GetAutoIcon(p, mode)
         render.MaterialOverride()
         cam.End3D()
         render.ResetModelLighting(1, 1, 1)
-        render.BlurRenderTarget(colorrt, 1 / rtx, 1 / rty, 1) --make it less noisy
+        render.BlurRenderTarget(colorrt, 0.25 / rtx, 0.25 / rty, 1) --lighter blur to keep edges sharper
         render.PopRenderTarget()
         -- Do edge detection convolution
         local coloredgert = MakeRT(ReusableName, rtx, rty)
@@ -690,7 +690,7 @@ function GetAutoIcon(p, mode)
         -- Note: We can't just increase mul 8* and add the unshifted image one time
         -- Nor can we use mul/8 for the shifted images and then mul the result
         -- (the bytes don't accumulate correctly)
-        local mul = Vector(1, 1, 1) * 0.7
+        local mul = Vector(1, 1, 1) * 1.2
 
         -- edge detection from normals
         for x = -1, 1 do
@@ -746,7 +746,7 @@ function GetAutoIcon(p, mode)
             end
 
 
-            drawtexture(edgert, Vector(1, 1, 1) * 1, bf_sub)
+            drawtexture(edgert, Vector(1, 1, 1) * 1.35, bf_sub)
             cam.End2D()
             render.PopRenderTarget()
         end
